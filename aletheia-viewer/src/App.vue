@@ -205,7 +205,7 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
         <div class="flex gap-3">
           <FileUploader
             label="Load Trusted Root(s)"
-            accept=".pem,.der,.pub,.key,*"
+            accept=".cert,.pub,.key,.pem,.der,*"
             multiple
             variant="secondary"
             @load="handleTrustedRootsLoad"
