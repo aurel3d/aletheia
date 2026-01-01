@@ -1,5 +1,8 @@
 # Aletheia
 
+[![CI](https://github.com/aurel3d/aletheia/workflows/CI/badge.svg)](https://github.com/aurel3d/aletheia/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Cryptographic proof of human-created content authenticity.
 
 In an era of AI-generated content, Aletheia provides a way to verify that data was **created or approved by a trusted human identity**. It uses digital signatures and a certificate authority model to ensure:
@@ -188,7 +191,7 @@ See [SPECIFICATION.md](SPECIFICATION.md) for full details.
 
 - **Ed25519** signatures (128-bit security level)
 - **CBOR** encoding for compact binary representation
-- **Zstd** compression (optional)
+- **LZ4** compression (optional, pure Rust)
 - Certificate chain validation
 - No expiration - signatures are permanent
 
@@ -199,6 +202,23 @@ See [SPECIFICATION.md](SPECIFICATION.md) for full details.
 - **Researchers**: Sign papers and datasets
 - **Legal**: Sign documents with permanent attribution
 - **Software**: Sign releases to prove trusted origin
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Branch strategy (main, feature, fix, release)
+- Pull request workflow
+- Code style guidelines
+- Testing requirements
+- CI/CD pipeline
+
+**Branch Protection**: All changes to `main` require:
+- Pull request with approval
+- All CI checks passing
+- Code review from maintainer
+
+See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for details.
 
 ## License
 
