@@ -108,7 +108,8 @@ async function handleTrustedRootsLoad(files: File[]) {
           }
         }
       } catch (cborError) {
-        console.log('CBOR decode attempt failed:', cborError.message)
+        const errorMessage = cborError instanceof Error ? cborError.message : 'Unknown error'
+        console.log('CBOR decode attempt failed:', errorMessage)
         // Not a valid CBOR certificate
       }
 

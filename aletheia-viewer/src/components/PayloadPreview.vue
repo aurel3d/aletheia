@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { detectContentType, decodeText, formatBytes } from '../lib/utils'
 
 interface Props {
@@ -28,8 +28,8 @@ const textContent = ref<string | null>(null)
 const textError = ref<string | null>(null)
 
 // Decompress if needed
-onMounted(async () => {
-  if (!props.isVerified) return
+watch(() => props.isVerified, async (isVerified) => {
+  if (!isVerified) return
 
   if (props.isCompressed) {
     isDecompressing.value = true
@@ -46,22 +46,22 @@ onMounted(async () => {
   } else {
     decompressedPayload.value = props.payload
   }
-})
+}, { immediate: true })
 
-// Load image
-computed(() => {
-  if (!isImage.value || !decompressedPayload.value) return
+// Load image when ready
+watch([isImage, decompressedPayload], ([isImg, payload]) => {
+  if (!isImg || !payload) return
 
-  const blob = new Blob([decompressedPayload.value as any], { type: actualContentType.value })
+  const blob = new Blob([payload as any], { type: actualContentType.value })
   imageDataUrl.value = URL.createObjectURL(blob)
 })
 
-// Load text
-computed(() => {
-  if (!isText.value || !decompressedPayload.value) return
+// Load text when ready
+watch([isText, decompressedPayload], ([isTxt, payload]) => {
+  if (!isTxt || !payload) return
 
   try {
-    textContent.value = decodeText(decompressedPayload.value)
+    textContent.value = decodeText(payload)
   } catch (error) {
     textError.value = error instanceof Error ? error.message : 'Failed to decode text'
   }
