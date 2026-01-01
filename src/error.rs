@@ -1,3 +1,6 @@
+extern crate alloc;
+
+use alloc::string::String;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -38,6 +41,10 @@ pub enum AletheiaError {
     #[error("Decompression error: {0}")]
     Decompression(String),
 
+    #[error("Unexpected end of data")]
+    UnexpectedEof,
+
+    #[cfg(feature = "std")]
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -48,4 +55,4 @@ pub enum AletheiaError {
     KeyGeneration(String),
 }
 
-pub type Result<T> = std::result::Result<T, AletheiaError>;
+pub type Result<T> = core::result::Result<T, AletheiaError>;

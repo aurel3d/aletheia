@@ -90,10 +90,12 @@ pub fn verify_certificate_chain(
 
 /// Generate a unique serial number for a certificate
 pub fn generate_serial() -> Vec<u8> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    extern crate alloc;
+
+    use alloc::vec;
+    use rand::{rngs::OsRng, Rng};
     let mut serial = vec![0u8; 16];
-    rng.fill(&mut serial[..]);
+    OsRng.fill(&mut serial[..]);
     serial
 }
 

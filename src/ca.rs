@@ -1,3 +1,5 @@
+extern crate alloc;
+
 use crate::{certificate::generate_serial, AletheiaError, Certificate, Result};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
@@ -14,7 +16,20 @@ impl CertificateAuthority {
     /// Create a new root Certificate Authority
     ///
     /// This generates a new key pair and creates a self-signed root certificate.
+    #[cfg(feature = "std")]
     pub fn new_root(subject_id: impl Into<String>, subject_name: impl Into<String>) -> Self {
+        Self::new_root_with_timestamp(subject_id, subject_name, chrono::Utc::now().timestamp())
+    }
+
+    /// Create a new root Certificate Authority with a specific timestamp
+    ///
+    /// This generates a new key pair and creates a self-signed root certificate.
+    /// Use this in no_std environments or when you need to control the timestamp.
+    pub fn new_root_with_timestamp(
+        subject_id: impl Into<String>,
+        subject_name: impl Into<String>,
+        issued_at: i64,
+    ) -> Self {
         let signing_key = SigningKey::generate(&mut OsRng);
         let public_key = signing_key.verifying_key();
         let subject_id = subject_id.into();
@@ -27,7 +42,7 @@ impl CertificateAuthority {
             subject_name: subject_name.into(),
             public_key: public_key.to_bytes().to_vec(),
             issuer_id: subject_id, // Self-signed
-            issued_at: chrono::Utc::now().timestamp(),
+            issued_at,
             is_ca: true,
             signature: Vec::new(),
         };
@@ -80,6 +95,7 @@ impl CertificateAuthority {
     ///
     /// The subject provides their public key, and the CA signs a certificate
     /// binding their identity to that key.
+    #[cfg(feature = "std")]
     pub fn issue_certificate(
         &self,
         subject_id: impl Into<String>,
@@ -87,9 +103,31 @@ impl CertificateAuthority {
         subject_public_key: &[u8],
         is_ca: bool,
     ) -> Result<Certificate> {
+        self.issue_certificate_with_timestamp(
+            subject_id,
+            subject_name,
+            subject_public_key,
+            is_ca,
+            chrono::Utc::now().timestamp(),
+        )
+    }
+
+    /// Issue a certificate for a subject with a specific timestamp
+    ///
+    /// The subject provides their public key, and the CA signs a certificate
+    /// binding their identity to that key.
+    /// Use this in no_std environments or when you need to control the timestamp.
+    pub fn issue_certificate_with_timestamp(
+        &self,
+        subject_id: impl Into<String>,
+        subject_name: impl Into<String>,
+        subject_public_key: &[u8],
+        is_ca: bool,
+        issued_at: i64,
+    ) -> Result<Certificate> {
         // Validate the public key
         VerifyingKey::try_from(subject_public_key)
-            .map_err(|e| AletheiaError::InvalidCertificate(format!("Invalid public key: {}", e)))?;
+            .map_err(|e| AletheiaError::InvalidCertificate(alloc::format!("Invalid public key: {}", e)))?;
 
         let mut certificate = Certificate {
             version: 1,
@@ -98,7 +136,7 @@ impl CertificateAuthority {
             subject_name: subject_name.into(),
             public_key: subject_public_key.to_vec(),
             issuer_id: self.certificate.subject_id.clone(),
-            issued_at: chrono::Utc::now().timestamp(),
+            issued_at,
             is_ca,
             signature: Vec::new(),
         };

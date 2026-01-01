@@ -20,6 +20,46 @@ Or build from source:
 cargo build --release
 ```
 
+## Platform Support
+
+Aletheia works on **all platforms** including WebAssembly:
+
+| Platform | Support | Notes |
+|----------|---------|-------|
+| **Windows, macOS, Linux** | ✅ Full | All features available |
+| **WebAssembly (WASM)** | ✅ Full | Use `wasm` feature |
+| **Embedded/no_std** | ✅ Core | Use `--no-default-features` |
+
+### Feature Flags
+
+```toml
+[dependencies]
+aletheia = { version = "0.1", default-features = false, features = ["wasm", "compression"] }
+```
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `std` | ✅ | Standard library support (file I/O, timestamps) |
+| `compression` | ✅ | LZ4 compression support (pure Rust) |
+| `cli` | ❌ | Command-line interface |
+| `wasm` | ❌ | WebAssembly support (enables JS bindings) |
+
+### WASM Usage
+
+```bash
+# Build for WASM
+cargo build --target wasm32-unknown-unknown --no-default-features --features wasm,compression
+
+# Use wasm-pack for browser
+wasm-pack build --target web --no-default-features --features wasm,compression
+```
+
+In WASM/no_std environments, use timestamp-explicit functions:
+```rust
+let header = Header::new_with_timestamp("alice@example.com", timestamp);
+let ca = CertificateAuthority::new_root_with_timestamp("root", "Root CA", timestamp);
+```
+
 ## Quick Start
 
 ### 1. Initialize a Certificate Authority

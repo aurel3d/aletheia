@@ -1,3 +1,7 @@
+extern crate alloc;
+
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use crate::{
     ca::SigningKeyPair, AletheiaError, AletheiaFile, Certificate, Flags, Header, Result,
     MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR,
@@ -7,6 +11,7 @@ use crate::{
 pub struct Signer {
     signing_key: SigningKeyPair,
     certificate_chain: Vec<Certificate>,
+    #[cfg(feature = "compression")]
     compress: bool,
 }
 
@@ -33,11 +38,13 @@ impl Signer {
         Ok(Self {
             signing_key,
             certificate_chain,
+            #[cfg(feature = "compression")]
             compress: false,
         })
     }
 
     /// Enable compression for payloads
+    #[cfg(feature = "compression")]
     pub fn with_compression(mut self) -> Self {
         self.compress = true;
         self
@@ -45,19 +52,16 @@ impl Signer {
 
     /// Sign data and create an Aletheia file structure
     pub fn sign(&self, payload: &[u8], header: Header) -> Result<AletheiaFile> {
-        let flags = if self.compress {
-            Flags::new().with_compression()
+        #[cfg(feature = "compression")]
+        let (flags, processed_payload) = if self.compress {
+            let compressed = lz4_flex::compress_prepend_size(payload);
+            (Flags::new().with_compression(), compressed)
         } else {
-            Flags::new()
+            (Flags::new(), payload.to_vec())
         };
 
-        // Compress payload if requested
-        let processed_payload = if self.compress {
-            zstd::encode_all(payload, 3)
-                .map_err(|e| AletheiaError::Compression(e.to_string()))?
-        } else {
-            payload.to_vec()
-        };
+        #[cfg(not(feature = "compression"))]
+        let (flags, processed_payload) = (Flags::new(), payload.to_vec());
 
         // Encode header as CBOR
         let mut header_bytes = Vec::new();
@@ -171,6 +175,7 @@ mod tests {
         assert_eq!(file.signature.len(), 64);
     }
 
+    #[cfg(feature = "compression")]
     #[test]
     fn test_sign_with_compression() {
         let ca = CertificateAuthority::new_root("root@example.com", "Root CA");

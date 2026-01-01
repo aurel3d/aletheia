@@ -1,5 +1,9 @@
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 pub const MAGIC_BYTES: &[u8; 8] = b"ALETHEIA";
 pub const VERSION_MAJOR: u8 = 1;
@@ -16,6 +20,7 @@ impl Flags {
         Self(0)
     }
 
+    #[cfg(feature = "compression")]
     pub fn with_compression(mut self) -> Self {
         self.0 |= Self::COMPRESSED;
         self
@@ -57,11 +62,15 @@ pub struct Header {
 
     /// Application-specific custom metadata (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom: Option<HashMap<String, serde_cbor_value::Value>>,
+    pub custom: Option<BTreeMap<String, serde_cbor_value::Value>>,
 }
 
 /// Workaround for custom CBOR values in the header
 pub mod serde_cbor_value {
+    extern crate alloc;
+
+    use alloc::string::String;
+    use alloc::vec::Vec;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,10 +88,23 @@ pub mod serde_cbor_value {
 }
 
 impl Header {
+    #[cfg(feature = "std")]
     pub fn new(creator_id: impl Into<String>) -> Self {
         Self {
             content_type: None,
             signed_at: chrono::Utc::now().timestamp(),
+            creator_id: creator_id.into(),
+            original_name: None,
+            description: None,
+            custom: None,
+        }
+    }
+
+    /// Create a header with a specific timestamp (useful for WASM/no_std)
+    pub fn new_with_timestamp(creator_id: impl Into<String>, signed_at: i64) -> Self {
+        Self {
+            content_type: None,
+            signed_at,
             creator_id: creator_id.into(),
             original_name: None,
             description: None,
@@ -190,8 +212,17 @@ impl AletheiaFile {
     /// Get the original (decompressed) payload
     pub fn get_payload(&self) -> crate::Result<Vec<u8>> {
         if self.flags.is_compressed() {
-            zstd::decode_all(self.payload.as_slice())
-                .map_err(|e| crate::AletheiaError::Decompression(e.to_string()))
+            #[cfg(feature = "compression")]
+            {
+                lz4_flex::decompress_size_prepended(&self.payload)
+                    .map_err(|e| crate::AletheiaError::Decompression(alloc::format!("{}", e)))
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                Err(crate::AletheiaError::Decompression(
+                    "Compression feature not enabled".into(),
+                ))
+            }
         } else {
             Ok(self.payload.clone())
         }

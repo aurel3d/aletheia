@@ -11,38 +11,52 @@ categories = ["cryptography", "authentication"]
 [lib]
 name = "aletheia"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "aletheia"
 path = "src/bin/cli.rs"
+required-features = ["cli"]
+
+[features]
+default = ["std", "compression"]
+std = ["chrono/std", "chrono/clock", "getrandom/std", "rand/std", "rand/std_rng"]
+cli = ["std", "dep:clap", "dep:directories", "dep:anyhow", "dep:hex", "dep:base64", "dep:serde_json"]
+compression = ["dep:lz4_flex"]
+wasm = ["getrandom/js", "chrono/wasmbind"]
 
 [dependencies]
 # Cryptography
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-sha2 = "0.10"
-rand = "0.8"
+ed25519-dalek = { version = "2", default-features = false, features = ["rand_core", "fast"] }
+sha2 = { version = "0.10", default-features = false }
+rand = { version = "0.8", default-features = false, features = ["getrandom"] }
+getrandom = { version = "0.2", default-features = false }
 
 # Serialization
 ciborium = "0.2"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_bytes = "0.11"
-serde_json = "1"
 
-# Compression
-zstd = "0.13"
+# Compression (pure Rust, WASM compatible)
+lz4_flex = { version = "0.11", default-features = false, features = ["frame"], optional = true }
 
 # Error handling
 thiserror = "2"
-anyhow = "1"
 
 # Utilities
-chrono = { version = "0.4", features = ["serde"] }
-hex = "0.4"
-base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
 
-# CLI
-clap = { version = "4", features = ["derive"] }
-directories = "6"
+# CLI only dependencies
+clap = { version = "4", features = ["derive"], optional = true }
+directories = { version = "6", optional = true }
+anyhow = { version = "1", optional = true }
+hex = { version = "0.4", optional = true }
+base64 = { version = "0.22", optional = true }
+serde_json = { version = "1", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 tempfile = "3"
+hex = "0.4"

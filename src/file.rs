@@ -1,66 +1,80 @@
-use crate::{AletheiaError, AletheiaFile, Certificate, Flags, Header, Result, MAGIC_BYTES};
-use std::io::{Read, Write};
+//! File I/O operations for Aletheia files.
+//!
+//! This module provides functions for reading and writing `.alx` files.
+//! For WASM/no_std environments, use `to_bytes` and `from_bytes` instead
+//! of the file-based functions.
 
-/// Write an Aletheia file to a writer
-pub fn write<W: Write>(file: &AletheiaFile, mut writer: W) -> Result<()> {
+extern crate alloc;
+
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use crate::{AletheiaError, AletheiaFile, Certificate, Flags, Header, Result, MAGIC_BYTES};
+
+/// Serialize an Aletheia file to bytes
+pub fn to_bytes(file: &AletheiaFile) -> Result<Vec<u8>> {
+    let mut buffer = Vec::new();
+
     // Magic bytes
-    writer.write_all(MAGIC_BYTES)?;
+    buffer.extend_from_slice(MAGIC_BYTES);
 
     // Version
-    writer.write_all(&[file.version_major, file.version_minor])?;
+    buffer.push(file.version_major);
+    buffer.push(file.version_minor);
 
     // Flags
-    writer.write_all(&file.flags.to_bytes())?;
+    buffer.extend_from_slice(&file.flags.to_bytes());
 
     // Header (CBOR)
     let mut header_bytes = Vec::new();
     ciborium::into_writer(&file.header, &mut header_bytes)
         .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
 
-    writer.write_all(&(header_bytes.len() as u32).to_le_bytes())?;
-    writer.write_all(&header_bytes)?;
+    buffer.extend_from_slice(&(header_bytes.len() as u32).to_le_bytes());
+    buffer.extend_from_slice(&header_bytes);
 
     // Payload
-    writer.write_all(&(file.payload.len() as u64).to_le_bytes())?;
-    writer.write_all(&file.payload)?;
+    buffer.extend_from_slice(&(file.payload.len() as u64).to_le_bytes());
+    buffer.extend_from_slice(&file.payload);
 
     // Certificate chain (CBOR)
     let mut cert_chain_bytes = Vec::new();
     ciborium::into_writer(&file.certificate_chain, &mut cert_chain_bytes)
         .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
 
-    writer.write_all(&(cert_chain_bytes.len() as u32).to_le_bytes())?;
-    writer.write_all(&cert_chain_bytes)?;
+    buffer.extend_from_slice(&(cert_chain_bytes.len() as u32).to_le_bytes());
+    buffer.extend_from_slice(&cert_chain_bytes);
 
     // Signature
-    writer.write_all(&file.signature)?;
+    buffer.extend_from_slice(&file.signature);
 
-    Ok(())
+    Ok(buffer)
 }
 
-/// Write an Aletheia file to a path
-pub fn write_to_file(file: &AletheiaFile, path: impl AsRef<std::path::Path>) -> Result<()> {
-    let f = std::fs::File::create(path)?;
-    let writer = std::io::BufWriter::new(f);
-    write(file, writer)
-}
+/// Deserialize an Aletheia file from bytes
+pub fn from_bytes(data: &[u8]) -> Result<AletheiaFile> {
+    let mut cursor = 0;
 
-/// Read an Aletheia file from a reader
-pub fn read<R: Read>(mut reader: R) -> Result<AletheiaFile> {
+    // Helper to read bytes
+    let read_bytes = |cursor: &mut usize, len: usize| -> Result<&[u8]> {
+        if *cursor + len > data.len() {
+            return Err(AletheiaError::UnexpectedEof);
+        }
+        let result = &data[*cursor..*cursor + len];
+        *cursor += len;
+        Ok(result)
+    };
+
     // Magic bytes
-    let mut magic = [0u8; 8];
-    reader.read_exact(&mut magic)?;
-    if &magic != MAGIC_BYTES {
+    let magic = read_bytes(&mut cursor, 8)?;
+    if magic != MAGIC_BYTES {
         return Err(AletheiaError::InvalidMagic);
     }
 
     // Version
-    let mut version = [0u8; 2];
-    reader.read_exact(&mut version)?;
+    let version = read_bytes(&mut cursor, 2)?;
     let version_major = version[0];
     let version_minor = version[1];
 
-    // Check version compatibility
     if version_major != 1 {
         return Err(AletheiaError::UnsupportedVersion {
             major: version_major,
@@ -69,44 +83,36 @@ pub fn read<R: Read>(mut reader: R) -> Result<AletheiaFile> {
     }
 
     // Flags
-    let mut flags_bytes = [0u8; 2];
-    reader.read_exact(&mut flags_bytes)?;
+    let flags_bytes: [u8; 2] = read_bytes(&mut cursor, 2)?.try_into().unwrap();
     let flags = Flags::from_bytes(flags_bytes);
 
     // Header length
-    let mut header_len_bytes = [0u8; 4];
-    reader.read_exact(&mut header_len_bytes)?;
+    let header_len_bytes: [u8; 4] = read_bytes(&mut cursor, 4)?.try_into().unwrap();
     let header_len = u32::from_le_bytes(header_len_bytes) as usize;
 
     // Header
-    let mut header_bytes = vec![0u8; header_len];
-    reader.read_exact(&mut header_bytes)?;
-    let header: Header = ciborium::from_reader(&header_bytes[..])
+    let header_bytes = read_bytes(&mut cursor, header_len)?;
+    let header: Header = ciborium::from_reader(header_bytes)
         .map_err(|e| AletheiaError::CborDecode(e.to_string()))?;
 
     // Payload length
-    let mut payload_len_bytes = [0u8; 8];
-    reader.read_exact(&mut payload_len_bytes)?;
+    let payload_len_bytes: [u8; 8] = read_bytes(&mut cursor, 8)?.try_into().unwrap();
     let payload_len = u64::from_le_bytes(payload_len_bytes) as usize;
 
     // Payload
-    let mut payload = vec![0u8; payload_len];
-    reader.read_exact(&mut payload)?;
+    let payload = read_bytes(&mut cursor, payload_len)?.to_vec();
 
     // Certificate chain length
-    let mut cert_len_bytes = [0u8; 4];
-    reader.read_exact(&mut cert_len_bytes)?;
+    let cert_len_bytes: [u8; 4] = read_bytes(&mut cursor, 4)?.try_into().unwrap();
     let cert_len = u32::from_le_bytes(cert_len_bytes) as usize;
 
     // Certificate chain
-    let mut cert_chain_bytes = vec![0u8; cert_len];
-    reader.read_exact(&mut cert_chain_bytes)?;
-    let certificate_chain: Vec<Certificate> = ciborium::from_reader(&cert_chain_bytes[..])
+    let cert_chain_bytes = read_bytes(&mut cursor, cert_len)?;
+    let certificate_chain: Vec<Certificate> = ciborium::from_reader(cert_chain_bytes)
         .map_err(|e| AletheiaError::CborDecode(e.to_string()))?;
 
     // Signature
-    let mut signature = vec![0u8; 64];
-    reader.read_exact(&mut signature)?;
+    let signature = read_bytes(&mut cursor, 64)?.to_vec();
 
     Ok(AletheiaFile {
         version_major,
@@ -119,23 +125,54 @@ pub fn read<R: Read>(mut reader: R) -> Result<AletheiaFile> {
     })
 }
 
-/// Read an Aletheia file from a path
-pub fn read_from_file(path: impl AsRef<std::path::Path>) -> Result<AletheiaFile> {
-    let f = std::fs::File::open(path)?;
-    let reader = std::io::BufReader::new(f);
-    read(reader)
-}
+// std-only file I/O functions
+#[cfg(feature = "std")]
+mod std_io {
+    use super::*;
+    use std::io::{Read, Write};
 
-/// Check if a file appears to be an Aletheia file by checking magic bytes
-pub fn is_aletheia_file(path: impl AsRef<std::path::Path>) -> Result<bool> {
-    let mut f = std::fs::File::open(path)?;
-    let mut magic = [0u8; 8];
-    match f.read_exact(&mut magic) {
-        Ok(_) => Ok(&magic == MAGIC_BYTES),
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
-        Err(e) => Err(e.into()),
+    /// Write an Aletheia file to a writer
+    pub fn write<W: Write>(file: &AletheiaFile, mut writer: W) -> Result<()> {
+        let bytes = to_bytes(file)?;
+        writer.write_all(&bytes)?;
+        Ok(())
+    }
+
+    /// Write an Aletheia file to a path
+    pub fn write_to_file(file: &AletheiaFile, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let f = std::fs::File::create(path)?;
+        let writer = std::io::BufWriter::new(f);
+        write(file, writer)
+    }
+
+    /// Read an Aletheia file from a reader
+    pub fn read<R: Read>(mut reader: R) -> Result<AletheiaFile> {
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
+        from_bytes(&buffer)
+    }
+
+    /// Read an Aletheia file from a path
+    pub fn read_from_file(path: impl AsRef<std::path::Path>) -> Result<AletheiaFile> {
+        let f = std::fs::File::open(path)?;
+        let reader = std::io::BufReader::new(f);
+        read(reader)
+    }
+
+    /// Check if a file appears to be an Aletheia file by checking magic bytes
+    pub fn is_aletheia_file(path: impl AsRef<std::path::Path>) -> Result<bool> {
+        let mut f = std::fs::File::open(path)?;
+        let mut magic = [0u8; 8];
+        match f.read_exact(&mut magic) {
+            Ok(_) => Ok(&magic == MAGIC_BYTES),
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 }
+
+#[cfg(feature = "std")]
+pub use std_io::*;
 
 #[cfg(test)]
 mod tests {
@@ -165,15 +202,14 @@ mod tests {
     }
 
     #[test]
-    fn test_write_and_read() {
+    fn test_to_bytes_and_from_bytes() {
         let original = create_test_file();
 
-        // Write to buffer
-        let mut buffer = Vec::new();
-        write(&original, &mut buffer).unwrap();
+        // Serialize
+        let bytes = to_bytes(&original).unwrap();
 
-        // Read back
-        let loaded = read(&buffer[..]).unwrap();
+        // Deserialize
+        let loaded = from_bytes(&bytes).unwrap();
 
         assert_eq!(loaded.version_major, original.version_major);
         assert_eq!(loaded.version_minor, original.version_minor);
@@ -187,6 +223,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_file_roundtrip() {
         let original = create_test_file();
@@ -207,7 +244,7 @@ mod tests {
     #[test]
     fn test_invalid_magic() {
         let data = b"NOTVALID12345678";
-        let result = read(&data[..]);
+        let result = from_bytes(data);
         assert!(matches!(result, Err(AletheiaError::InvalidMagic)));
     }
 }
