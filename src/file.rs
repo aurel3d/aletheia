@@ -6,9 +6,9 @@
 
 extern crate alloc;
 
+use crate::{AletheiaError, AletheiaFile, Certificate, Flags, Header, MAGIC_BYTES, Result};
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use crate::{AletheiaError, AletheiaFile, Certificate, Flags, Header, Result, MAGIC_BYTES};
 
 /// Serialize an Aletheia file to bytes
 pub fn to_bytes(file: &AletheiaFile) -> Result<Vec<u8>> {
@@ -184,11 +184,8 @@ mod tests {
 
     fn create_test_file() -> AletheiaFile {
         let timestamp = 1704067200;
-        let ca = CertificateAuthority::new_root_with_timestamp(
-            "root@example.com",
-            "Root CA",
-            timestamp,
-        );
+        let ca =
+            CertificateAuthority::new_root_with_timestamp("root@example.com", "Root CA", timestamp);
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca

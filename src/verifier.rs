@@ -1,6 +1,6 @@
 use crate::{
-    certificate::verify_certificate_chain, signer::build_signature_input, AletheiaError,
-    AletheiaFile, Result,
+    AletheiaError, AletheiaFile, Result, certificate::verify_certificate_chain,
+    signer::build_signature_input,
 };
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
@@ -49,12 +49,8 @@ pub fn verify(file: &AletheiaFile, trusted_root_keys: &[Vec<u8>]) -> Result<Veri
         .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
 
     // Build the signature input
-    let signature_input = build_signature_input(
-        &file.flags,
-        &header_bytes,
-        &file.payload,
-        &cert_chain_bytes,
-    );
+    let signature_input =
+        build_signature_input(&file.flags, &header_bytes, &file.payload, &cert_chain_bytes);
 
     // Verify the signature
     let verifying_key = VerifyingKey::try_from(creator_cert.public_key.as_slice())
@@ -114,18 +110,15 @@ pub fn validate_structure(file: &AletheiaFile) -> Result<()> {
 mod tests {
     use super::*;
     use crate::{
+        Header,
         ca::{CertificateAuthority, SigningKeyPair},
         signer::Signer,
-        Header,
     };
 
     fn create_test_file() -> (AletheiaFile, Vec<Vec<u8>>) {
         let timestamp = 1704067200;
-        let ca = CertificateAuthority::new_root_with_timestamp(
-            "root@example.com",
-            "Root CA",
-            timestamp,
-        );
+        let ca =
+            CertificateAuthority::new_root_with_timestamp("root@example.com", "Root CA", timestamp);
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca

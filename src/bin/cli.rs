@@ -1,17 +1,21 @@
 use aletheia::{
+    Certificate, Header,
     ca::{CertificateAuthority, SigningKeyPair},
     file::{read_from_file, write_to_file},
     signer::Signer,
-    verifier::{verify, VerificationResult},
-    Certificate, Header,
+    verifier::{VerificationResult, verify},
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "aletheia")]
-#[command(author, version, about = "Cryptographic proof of human-created content authenticity")]
+#[command(
+    author,
+    version,
+    about = "Cryptographic proof of human-created content authenticity"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -158,16 +162,16 @@ fn main() -> Result<()> {
             content_type,
             description,
             compress,
-        } => cmd_sign(
-            &input,
-            output.as_deref(),
-            &key,
-            &cert,
-            &ca_cert,
-            content_type.as_deref(),
-            description.as_deref(),
+        } => cmd_sign(SignParams {
+            input: &input,
+            output: output.as_deref(),
+            key_path: &key,
+            cert_path: &cert,
+            ca_cert_path: &ca_cert,
+            content_type: content_type.as_deref(),
+            description: description.as_deref(),
             compress,
-        ),
+        }),
         Commands::Verify {
             file,
             trust,
@@ -214,10 +218,8 @@ fn cmd_cert_issue(
     is_ca: bool,
 ) -> Result<()> {
     // Load CA
-    let ca_key_hex = std::fs::read_to_string(ca_key_path)
-        .context("Failed to read CA key file")?;
-    let ca_key_bytes = hex::decode(ca_key_hex.trim())
-        .context("Invalid CA key format")?;
+    let ca_key_hex = std::fs::read_to_string(ca_key_path).context("Failed to read CA key file")?;
+    let ca_key_bytes = hex::decode(ca_key_hex.trim()).context("Invalid CA key format")?;
 
     let ca_cert = load_certificate(ca_cert_path)?;
     let ca = CertificateAuthority::from_key_and_cert(&ca_key_bytes, ca_cert)
@@ -275,78 +277,78 @@ fn cmd_keygen(output: &PathBuf, prefix: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_sign(
-    input: &PathBuf,
-    output: Option<&std::path::Path>,
-    key_path: &PathBuf,
-    cert_path: &PathBuf,
-    ca_cert_path: &PathBuf,
-    content_type: Option<&str>,
-    description: Option<&str>,
+struct SignParams<'a> {
+    input: &'a PathBuf,
+    output: Option<&'a std::path::Path>,
+    key_path: &'a PathBuf,
+    cert_path: &'a PathBuf,
+    ca_cert_path: &'a PathBuf,
+    content_type: Option<&'a str>,
+    description: Option<&'a str>,
     compress: bool,
-) -> Result<()> {
+}
+
+fn cmd_sign(params: SignParams) -> Result<()> {
     // Load signing key
-    let key_hex = std::fs::read_to_string(key_path)
-        .context("Failed to read private key file")?;
-    let key_bytes = hex::decode(key_hex.trim())
-        .context("Invalid key format")?;
-    let signing_key = SigningKeyPair::from_bytes(&key_bytes)
-        .context("Failed to load signing key")?;
+    let key_hex =
+        std::fs::read_to_string(params.key_path).context("Failed to read private key file")?;
+    let key_bytes = hex::decode(key_hex.trim()).context("Invalid key format")?;
+    let signing_key =
+        SigningKeyPair::from_bytes(&key_bytes).context("Failed to load signing key")?;
 
     // Load certificates
-    let user_cert = load_certificate(cert_path)?;
-    let ca_cert = load_certificate(ca_cert_path)?;
+    let user_cert = load_certificate(params.cert_path)?;
+    let ca_cert = load_certificate(params.ca_cert_path)?;
 
     // Build certificate chain
     let chain = vec![user_cert.clone(), ca_cert];
 
     // Create signer
-    let mut signer = Signer::new(signing_key, chain)
-        .context("Failed to create signer")?;
-    if compress {
+    let mut signer = Signer::new(signing_key, chain).context("Failed to create signer")?;
+    if params.compress {
         signer = signer.with_compression();
     }
 
     // Read input file
-    let payload = std::fs::read(input)
-        .context("Failed to read input file")?;
+    let payload = std::fs::read(params.input).context("Failed to read input file")?;
 
     // Build header
     let mut header = Header::new(&user_cert.subject_id);
-    if let Some(ct) = content_type {
+    if let Some(ct) = params.content_type {
         header = header.with_content_type(ct);
     }
-    if let Some(desc) = description {
+    if let Some(desc) = params.description {
         header = header.with_description(desc);
     }
-    if let Some(name) = input.file_name().and_then(|n| n.to_str()) {
+    if let Some(name) = params.input.file_name().and_then(|n| n.to_str()) {
         header = header.with_original_name(name);
     }
 
     // Sign
-    let signed_file = signer.sign(&payload, header)
+    let signed_file = signer
+        .sign(&payload, header)
         .context("Failed to sign file")?;
 
     // Determine output path
-    let output_path = output
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| {
-            let mut p = input.clone();
-            let new_name = format!(
-                "{}.alx",
-                p.file_name().unwrap_or_default().to_string_lossy()
-            );
-            p.set_file_name(new_name);
-            p
-        });
+    let output_path = params.output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let mut p = params.input.clone();
+        let new_name = format!(
+            "{}.alx",
+            p.file_name().unwrap_or_default().to_string_lossy()
+        );
+        p.set_file_name(new_name);
+        p
+    });
 
     // Write output
-    write_to_file(&signed_file, &output_path)
-        .context("Failed to write output file")?;
+    write_to_file(&signed_file, &output_path).context("Failed to write output file")?;
 
     println!("Signed file created: {}", output_path.display());
-    println!("  Creator:     {} ({})", user_cert.subject_name, user_cert.subject_id);
-    println!("  Compressed:  {}", compress);
+    println!(
+        "  Creator:     {} ({})",
+        user_cert.subject_name, user_cert.subject_id
+    );
+    println!("  Compressed:  {}", params.compress);
     println!("  Payload:     {} bytes", payload.len());
 
     Ok(())
@@ -367,8 +369,7 @@ fn cmd_verify(
     }
 
     // Load the .alx file
-    let alx_file = read_from_file(file)
-        .context("Failed to read .alx file")?;
+    let alx_file = read_from_file(file).context("Failed to read .alx file")?;
 
     // Verify
     match verify(&alx_file, &trusted_roots) {
@@ -377,10 +378,10 @@ fn cmd_verify(
 
             // Extract payload if requested
             if let Some(out_path) = output {
-                let payload = alx_file.get_payload()
+                let payload = alx_file
+                    .get_payload()
                     .context("Failed to decompress payload")?;
-                std::fs::write(out_path, &payload)
-                    .context("Failed to write output file")?;
+                std::fs::write(out_path, &payload).context("Failed to write output file")?;
                 println!("\nPayload extracted to: {}", out_path.display());
             }
 
@@ -395,18 +396,23 @@ fn cmd_verify(
 }
 
 fn cmd_info(file: &PathBuf) -> Result<()> {
-    let alx_file = read_from_file(file)
-        .context("Failed to read .alx file")?;
+    let alx_file = read_from_file(file).context("Failed to read .alx file")?;
 
     println!("Aletheia File Information");
     println!("=========================");
     println!("File:          {}", file.display());
-    println!("Version:       {}.{}", alx_file.version_major, alx_file.version_minor);
+    println!(
+        "Version:       {}.{}",
+        alx_file.version_major, alx_file.version_minor
+    );
     println!("Compressed:    {}", alx_file.flags.is_compressed());
     println!();
     println!("Header:");
     println!("  Creator ID:  {}", alx_file.header.creator_id);
-    println!("  Signed at:   {}", format_timestamp(alx_file.header.signed_at));
+    println!(
+        "  Signed at:   {}",
+        format_timestamp(alx_file.header.signed_at)
+    );
     if let Some(ct) = &alx_file.header.content_type {
         println!("  Content-Type: {}", ct);
     }
@@ -418,16 +424,28 @@ fn cmd_info(file: &PathBuf) -> Result<()> {
     }
     println!();
     println!("Payload:       {} bytes", alx_file.payload.len());
-    if alx_file.flags.is_compressed() {
-        if let Ok(decompressed) = alx_file.get_payload() {
-            println!("  (decompressed: {} bytes)", decompressed.len());
-        }
+    if alx_file.flags.is_compressed()
+        && let Ok(decompressed) = alx_file.get_payload()
+    {
+        println!("  (decompressed: {} bytes)", decompressed.len());
     }
     println!();
-    println!("Certificate Chain ({} certificates):", alx_file.certificate_chain.len());
+    println!(
+        "Certificate Chain ({} certificates):",
+        alx_file.certificate_chain.len()
+    );
     for (i, cert) in alx_file.certificate_chain.iter().enumerate() {
-        let role = if i == 0 { "Creator" } else if cert.is_ca { "CA" } else { "Intermediate" };
-        println!("  [{}] {} - {} ({})", i, role, cert.subject_name, cert.subject_id);
+        let role = if i == 0 {
+            "Creator"
+        } else if cert.is_ca {
+            "CA"
+        } else {
+            "Intermediate"
+        };
+        println!(
+            "  [{}] {} - {} ({})",
+            i, role, cert.subject_name, cert.subject_id
+        );
         println!("      Issued by: {}", cert.issuer_id);
         println!("      Issued at: {}", format_timestamp(cert.issued_at));
     }
@@ -438,12 +456,11 @@ fn cmd_info(file: &PathBuf) -> Result<()> {
 // Helper functions
 
 fn load_certificate(path: &PathBuf) -> Result<Certificate> {
-    let content = std::fs::read_to_string(path)
-        .context("Failed to read certificate file")?;
+    let content = std::fs::read_to_string(path).context("Failed to read certificate file")?;
     let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, content.trim())
         .context("Invalid certificate format (not base64)")?;
-    let cert: Certificate = ciborium::from_reader(&bytes[..])
-        .context("Invalid certificate format (not valid CBOR)")?;
+    let cert: Certificate =
+        ciborium::from_reader(&bytes[..]).context("Invalid certificate format (not valid CBOR)")?;
     Ok(cert)
 }
 
@@ -457,7 +474,13 @@ fn save_certificate(cert: &Certificate, path: &PathBuf) -> Result<()> {
 
 fn sanitize_filename(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

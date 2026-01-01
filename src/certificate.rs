@@ -93,7 +93,7 @@ pub fn generate_serial() -> Vec<u8> {
     extern crate alloc;
 
     use alloc::vec;
-    use rand::{rngs::OsRng, Rng};
+    use rand::{Rng, rngs::OsRng};
     let mut serial = vec![0u8; 16];
     OsRng.fill(&mut serial[..]);
     serial

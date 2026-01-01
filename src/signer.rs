@@ -1,11 +1,11 @@
 extern crate alloc;
 
+use crate::{
+    AletheiaError, AletheiaFile, Certificate, Flags, Header, MAGIC_BYTES, Result, VERSION_MAJOR,
+    VERSION_MINOR, ca::SigningKeyPair,
+};
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use crate::{
-    ca::SigningKeyPair, AletheiaError, AletheiaFile, Certificate, Flags, Header, Result,
-    MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR,
-};
 
 /// Builder for creating signed Aletheia files
 pub struct Signer {
@@ -74,12 +74,8 @@ impl Signer {
             .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
 
         // Build the data to sign
-        let signature_input = build_signature_input(
-            &flags,
-            &header_bytes,
-            &processed_payload,
-            &cert_chain_bytes,
-        );
+        let signature_input =
+            build_signature_input(&flags, &header_bytes, &processed_payload, &cert_chain_bytes);
 
         // Sign it
         let signature = self.signing_key.sign(&signature_input);
@@ -144,11 +140,8 @@ mod tests {
     fn test_sign_data() {
         // Create CA and user
         let timestamp = 1704067200;
-        let ca = CertificateAuthority::new_root_with_timestamp(
-            "root@example.com",
-            "Root CA",
-            timestamp,
-        );
+        let ca =
+            CertificateAuthority::new_root_with_timestamp("root@example.com", "Root CA", timestamp);
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca
@@ -185,11 +178,8 @@ mod tests {
     #[test]
     fn test_sign_with_compression() {
         let timestamp = 1704067200;
-        let ca = CertificateAuthority::new_root_with_timestamp(
-            "root@example.com",
-            "Root CA",
-            timestamp,
-        );
+        let ca =
+            CertificateAuthority::new_root_with_timestamp("root@example.com", "Root CA", timestamp);
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca

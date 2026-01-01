@@ -95,4 +95,6 @@ pub mod signer;
 pub mod verifier;
 
 pub use error::{AletheiaError, Result};
-pub use types::{AletheiaFile, Certificate, Flags, Header, MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR};
+pub use types::{
+    AletheiaFile, Certificate, Flags, Header, MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR,
+};

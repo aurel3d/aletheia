@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use crate::{certificate::generate_serial, AletheiaError, Certificate, Result};
+use crate::{AletheiaError, Certificate, Result, certificate::generate_serial};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 
@@ -61,9 +61,9 @@ impl CertificateAuthority {
     ///
     /// Used for loading a CA from storage.
     pub fn from_key_and_cert(signing_key_bytes: &[u8], certificate: Certificate) -> Result<Self> {
-        let signing_key_array: [u8; 32] = signing_key_bytes.try_into().map_err(|_| {
-            AletheiaError::KeyGeneration("Invalid signing key length".into())
-        })?;
+        let signing_key_array: [u8; 32] = signing_key_bytes
+            .try_into()
+            .map_err(|_| AletheiaError::KeyGeneration("Invalid signing key length".into()))?;
 
         let signing_key = SigningKey::from_bytes(&signing_key_array);
 
@@ -126,8 +126,9 @@ impl CertificateAuthority {
         issued_at: i64,
     ) -> Result<Certificate> {
         // Validate the public key
-        VerifyingKey::try_from(subject_public_key)
-            .map_err(|e| AletheiaError::InvalidCertificate(alloc::format!("Invalid public key: {}", e)))?;
+        VerifyingKey::try_from(subject_public_key).map_err(|e| {
+            AletheiaError::InvalidCertificate(alloc::format!("Invalid public key: {}", e))
+        })?;
 
         let mut certificate = Certificate {
             version: 1,
@@ -164,9 +165,9 @@ impl SigningKeyPair {
 
     /// Load a key pair from private key bytes
     pub fn from_bytes(private_key: &[u8]) -> Result<Self> {
-        let key_array: [u8; 32] = private_key.try_into().map_err(|_| {
-            AletheiaError::KeyGeneration("Invalid private key length".into())
-        })?;
+        let key_array: [u8; 32] = private_key
+            .try_into()
+            .map_err(|_| AletheiaError::KeyGeneration("Invalid private key length".into()))?;
 
         Ok(Self {
             signing_key: SigningKey::from_bytes(&key_array),
