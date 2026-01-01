@@ -92,15 +92,23 @@ async function handleTrustedRootsLoad(files: File[]) {
       // Try to parse as CBOR certificate (.cert file)
       try {
         const cert = decode(bytes)
-        if (cert && cert.public_key) {
-          const publicKey = new Uint8Array(cert.public_key)
-          if (publicKey.length === 32) {
-            roots.push(publicKey)
-            console.log(`Loaded certificate from ${file.name}:`, cert.subject_name, `(${cert.subject_id})`)
+        console.log('Decoded certificate structure:', cert)
+
+        // Try different possible field names
+        const publicKey = cert?.public_key || cert?.publicKey
+
+        if (publicKey) {
+          const keyBytes = new Uint8Array(publicKey)
+          if (keyBytes.length === 32) {
+            roots.push(keyBytes)
+            const name = cert.subject_name || cert.subjectName || 'Unknown'
+            const id = cert.subject_id || cert.subjectId || 'Unknown'
+            console.log(`✅ Loaded certificate from ${file.name}: ${name} (${id})`)
             continue
           }
         }
       } catch (cborError) {
+        console.log('CBOR decode attempt failed:', cborError.message)
         // Not a valid CBOR certificate
       }
 

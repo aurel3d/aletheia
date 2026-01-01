@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head><title>Extract CA Key</title></head>
+<body>
+<h1>Extract CA Public Key</h1>
+<input type="file" id="fileInput" accept=".alx">
+<pre id="output"></pre>
+<script type="module">
+import init, { parse_aletheia_file } from './src/lib/wasm-pkg/aletheia.js';
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  await init();
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const parsed = parse_aletheia_file(bytes);
+
+  const rootCert = parsed.certificateChain[parsed.certificateChain.length - 1];
+  if (rootCert && rootCert.publicKey) {
+    const hex = Array.from(rootCert.publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    document.getElementById('output').textContent = 
+      `Root CA: ${rootCert.subjectName} (${rootCert.subjectId})\n\nPublic Key (hex):\n${hex}\n\nSave this to ca.pub file!`;
+
+    // Auto-download
+    const blob = new Blob([hex], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ca.pub';
+    a.click();
+  }
+});
+</script>
+</body>
+</html>
