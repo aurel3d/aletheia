@@ -1,12 +1,9 @@
 //! WASM bindings for browser use
 
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
-use crate::{
-    file::from_bytes,
-    verifier::verify,
-};
+use crate::{file::from_bytes, verifier::verify};
 
 #[wasm_bindgen]
 extern "C" {
@@ -78,8 +75,7 @@ pub struct WasmVerificationResult {
 /// Parse an Aletheia file from bytes
 #[wasm_bindgen]
 pub fn parse_aletheia_file(data: &[u8]) -> Result<JsValue, JsValue> {
-    let file = from_bytes(data)
-        .map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
+    let file = from_bytes(data).map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
 
     // Calculate byte ranges
     let mut offset = 0;
@@ -132,17 +128,21 @@ pub fn parse_aletheia_file(data: &[u8]) -> Result<JsValue, JsValue> {
             description: file.header.description,
         },
         payload: file.payload,
-        certificate_chain: file.certificate_chain.into_iter().map(|c| WasmCertificate {
-            version: c.version,
-            serial: c.serial,
-            subject_id: c.subject_id,
-            subject_name: c.subject_name,
-            public_key: c.public_key,
-            issuer_id: c.issuer_id,
-            issued_at: c.issued_at,
-            is_ca: c.is_ca,
-            signature: c.signature,
-        }).collect(),
+        certificate_chain: file
+            .certificate_chain
+            .into_iter()
+            .map(|c| WasmCertificate {
+                version: c.version,
+                serial: c.serial,
+                subject_id: c.subject_id,
+                subject_name: c.subject_name,
+                public_key: c.public_key,
+                issuer_id: c.issuer_id,
+                issued_at: c.issued_at,
+                is_ca: c.is_ca,
+                signature: c.signature,
+            })
+            .collect(),
         signature: file.signature,
         magic_range,
         version_range,
@@ -161,8 +161,7 @@ pub fn parse_aletheia_file(data: &[u8]) -> Result<JsValue, JsValue> {
 /// trusted_root_keys should be a JS Array of Uint8Array
 #[wasm_bindgen]
 pub fn verify_aletheia_file(data: &[u8], trusted_root_keys: JsValue) -> Result<JsValue, JsValue> {
-    let file = from_bytes(data)
-        .map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
+    let file = from_bytes(data).map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
 
     // Convert JsValue to Vec<Vec<u8>>
     let trusted_roots: Vec<Vec<u8>> = serde_wasm_bindgen::from_value(trusted_root_keys)
