@@ -1,0 +1,199 @@
+use crate::{
+    ca::SigningKeyPair, AletheiaError, AletheiaFile, Certificate, Flags, Header, Result,
+    MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR,
+};
+
+/// Builder for creating signed Aletheia files
+pub struct Signer {
+    signing_key: SigningKeyPair,
+    certificate_chain: Vec<Certificate>,
+    compress: bool,
+}
+
+impl Signer {
+    /// Create a new signer with a key pair and certificate chain
+    ///
+    /// The certificate chain should be ordered: [creator_cert, ..., root_cert]
+    /// The first certificate must contain the public key matching the signing key.
+    pub fn new(signing_key: SigningKeyPair, certificate_chain: Vec<Certificate>) -> Result<Self> {
+        if certificate_chain.is_empty() {
+            return Err(AletheiaError::CertificateChainInvalid(
+                "Certificate chain cannot be empty".into(),
+            ));
+        }
+
+        // Verify the signing key matches the first certificate
+        let creator_cert = &certificate_chain[0];
+        if signing_key.public_key() != creator_cert.public_key {
+            return Err(AletheiaError::InvalidCertificate(
+                "Signing key does not match creator certificate".into(),
+            ));
+        }
+
+        Ok(Self {
+            signing_key,
+            certificate_chain,
+            compress: false,
+        })
+    }
+
+    /// Enable compression for payloads
+    pub fn with_compression(mut self) -> Self {
+        self.compress = true;
+        self
+    }
+
+    /// Sign data and create an Aletheia file structure
+    pub fn sign(&self, payload: &[u8], header: Header) -> Result<AletheiaFile> {
+        let flags = if self.compress {
+            Flags::new().with_compression()
+        } else {
+            Flags::new()
+        };
+
+        // Compress payload if requested
+        let processed_payload = if self.compress {
+            zstd::encode_all(payload, 3)
+                .map_err(|e| AletheiaError::Compression(e.to_string()))?
+        } else {
+            payload.to_vec()
+        };
+
+        // Encode header as CBOR
+        let mut header_bytes = Vec::new();
+        ciborium::into_writer(&header, &mut header_bytes)
+            .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
+
+        // Encode certificate chain as CBOR
+        let mut cert_chain_bytes = Vec::new();
+        ciborium::into_writer(&self.certificate_chain, &mut cert_chain_bytes)
+            .map_err(|e| AletheiaError::CborEncode(e.to_string()))?;
+
+        // Build the data to sign
+        let signature_input = build_signature_input(
+            &flags,
+            &header_bytes,
+            &processed_payload,
+            &cert_chain_bytes,
+        );
+
+        // Sign it
+        let signature = self.signing_key.sign(&signature_input);
+
+        Ok(AletheiaFile {
+            version_major: VERSION_MAJOR,
+            version_minor: VERSION_MINOR,
+            flags,
+            header,
+            payload: processed_payload,
+            certificate_chain: self.certificate_chain.clone(),
+            signature,
+        })
+    }
+
+    /// Get the creator ID from the certificate
+    pub fn creator_id(&self) -> &str {
+        &self.certificate_chain[0].subject_id
+    }
+}
+
+/// Build the input data for signature computation
+pub(crate) fn build_signature_input(
+    flags: &Flags,
+    header_bytes: &[u8],
+    payload: &[u8],
+    cert_chain_bytes: &[u8],
+) -> Vec<u8> {
+    let mut input = Vec::new();
+
+    // Magic bytes
+    input.extend_from_slice(MAGIC_BYTES);
+
+    // Version
+    input.push(VERSION_MAJOR);
+    input.push(VERSION_MINOR);
+
+    // Flags
+    input.extend_from_slice(&flags.to_bytes());
+
+    // Header length + header
+    input.extend_from_slice(&(header_bytes.len() as u32).to_le_bytes());
+    input.extend_from_slice(header_bytes);
+
+    // Payload length + payload
+    input.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+    input.extend_from_slice(payload);
+
+    // Certificate chain length + chain
+    input.extend_from_slice(&(cert_chain_bytes.len() as u32).to_le_bytes());
+    input.extend_from_slice(cert_chain_bytes);
+
+    input
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ca::CertificateAuthority;
+
+    #[test]
+    fn test_sign_data() {
+        // Create CA and user
+        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let user_keys = SigningKeyPair::generate();
+
+        let user_cert = ca
+            .issue_certificate(
+                "alice@example.com",
+                "Alice",
+                &user_keys.public_key(),
+                false,
+            )
+            .unwrap();
+
+        let chain = vec![user_cert, ca.certificate.clone()];
+
+        // Create signer
+        let signer = Signer::new(user_keys, chain).unwrap();
+
+        // Sign some data
+        let payload = b"Hello, World!";
+        let header = Header::new("alice@example.com")
+            .with_content_type("text/plain")
+            .with_description("Test data");
+
+        let file = signer.sign(payload, header).unwrap();
+
+        assert_eq!(file.version_major, 1);
+        assert_eq!(file.version_minor, 0);
+        assert!(!file.flags.is_compressed());
+        assert_eq!(file.payload, payload);
+        assert_eq!(file.signature.len(), 64);
+    }
+
+    #[test]
+    fn test_sign_with_compression() {
+        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let user_keys = SigningKeyPair::generate();
+
+        let user_cert = ca
+            .issue_certificate("alice@example.com", "Alice", &user_keys.public_key(), false)
+            .unwrap();
+
+        let chain = vec![user_cert, ca.certificate.clone()];
+        let signer = Signer::new(user_keys, chain).unwrap().with_compression();
+
+        // Large repetitive data compresses well
+        let payload = "Hello, World! ".repeat(1000);
+        let header = Header::new("alice@example.com");
+
+        let file = signer.sign(payload.as_bytes(), header).unwrap();
+
+        assert!(file.flags.is_compressed());
+        assert!(file.payload.len() < payload.len()); // Should be smaller
+
+        // Verify we can decompress
+        let decompressed = file.get_payload().unwrap();
+        assert_eq!(decompressed, payload.as_bytes());
+    }
+}

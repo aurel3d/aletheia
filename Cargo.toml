@@ -1,0 +1,48 @@
+[package]
+name = "aletheia"
+version = "0.1.0"
+edition = "2024"
+description = "Cryptographic proof of human-created content authenticity"
+license = "MIT"
+repository = "https://github.com/yourusername/aletheia"
+keywords = ["cryptography", "signature", "authenticity", "attestation"]
+categories = ["cryptography", "authentication"]
+
+[lib]
+name = "aletheia"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aletheia"
+path = "src/bin/cli.rs"
+
+[dependencies]
+# Cryptography
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+rand = "0.8"
+
+# Serialization
+ciborium = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+serde_json = "1"
+
+# Compression
+zstd = "0.13"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+base64 = "0.22"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+directories = "6"
+
+[dev-dependencies]
+tempfile = "3"
