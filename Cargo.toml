@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Cryptographic proof of human-created content authenticity"
 license = "MIT"
-repository = "https://github.com/yourusername/aletheia"
+repository = "https://github.com/aurel3d/aletheia"
 keywords = ["cryptography", "signature", "authenticity", "attestation"]
 categories = ["cryptography", "authentication"]
 
