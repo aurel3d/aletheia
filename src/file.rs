@@ -183,18 +183,29 @@ mod tests {
     };
 
     fn create_test_file() -> AletheiaFile {
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let timestamp = 1704067200;
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            timestamp,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca
-            .issue_certificate("alice@example.com", "Alice", &user_keys.public_key(), false)
+            .issue_certificate_with_timestamp(
+                "alice@example.com",
+                "Alice",
+                &user_keys.public_key(),
+                false,
+                timestamp,
+            )
             .unwrap();
 
         let chain = vec![user_cert, ca.certificate.clone()];
         let signer = Signer::new(user_keys, chain).unwrap();
 
         let payload = b"Test content for file I/O";
-        let header = Header::new("alice@example.com")
+        let header = Header::new_with_timestamp("alice@example.com", timestamp)
             .with_content_type("text/plain")
             .with_description("Test file");
 

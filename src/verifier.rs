@@ -120,18 +120,29 @@ mod tests {
     };
 
     fn create_test_file() -> (AletheiaFile, Vec<Vec<u8>>) {
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let timestamp = 1704067200;
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            timestamp,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca
-            .issue_certificate("alice@example.com", "Alice", &user_keys.public_key(), false)
+            .issue_certificate_with_timestamp(
+                "alice@example.com",
+                "Alice",
+                &user_keys.public_key(),
+                false,
+                timestamp,
+            )
             .unwrap();
 
         let chain = vec![user_cert, ca.certificate.clone()];
         let signer = Signer::new(user_keys, chain).unwrap();
 
         let payload = b"Test content";
-        let header = Header::new("alice@example.com")
+        let header = Header::new_with_timestamp("alice@example.com", timestamp)
             .with_description("Test file");
 
         let file = signer.sign(payload, header).unwrap();
@@ -157,7 +168,11 @@ mod tests {
         let (file, _) = create_test_file();
 
         // Use a different trusted root
-        let other_ca = CertificateAuthority::new_root("other@example.com", "Other CA");
+        let other_ca = CertificateAuthority::new_root_with_timestamp(
+            "other@example.com",
+            "Other CA",
+            1704067200,
+        );
         let wrong_roots = vec![other_ca.public_key()];
 
         let result = verify(&file, &wrong_roots);

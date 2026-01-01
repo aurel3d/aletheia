@@ -196,7 +196,11 @@ mod tests {
 
     #[test]
     fn test_create_root_ca() {
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            1704067200,
+        );
 
         assert_eq!(ca.certificate.subject_id, "root@example.com");
         assert_eq!(ca.certificate.issuer_id, "root@example.com");
@@ -208,15 +212,20 @@ mod tests {
 
     #[test]
     fn test_issue_certificate() {
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            1704067200,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let cert = ca
-            .issue_certificate(
+            .issue_certificate_with_timestamp(
                 "alice@example.com",
                 "Alice",
                 &user_keys.public_key(),
                 false,
+                1704067200,
             )
             .unwrap();
 
@@ -230,15 +239,20 @@ mod tests {
 
     #[test]
     fn test_certificate_chain() {
-        let root_ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let root_ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            1704067200,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = root_ca
-            .issue_certificate(
+            .issue_certificate_with_timestamp(
                 "alice@example.com",
                 "Alice",
                 &user_keys.public_key(),
                 false,
+                1704067200,
             )
             .unwrap();
 

@@ -143,15 +143,21 @@ mod tests {
     #[test]
     fn test_sign_data() {
         // Create CA and user
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let timestamp = 1704067200;
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            timestamp,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca
-            .issue_certificate(
+            .issue_certificate_with_timestamp(
                 "alice@example.com",
                 "Alice",
                 &user_keys.public_key(),
                 false,
+                timestamp,
             )
             .unwrap();
 
@@ -162,7 +168,7 @@ mod tests {
 
         // Sign some data
         let payload = b"Hello, World!";
-        let header = Header::new("alice@example.com")
+        let header = Header::new_with_timestamp("alice@example.com", timestamp)
             .with_content_type("text/plain")
             .with_description("Test data");
 
@@ -178,11 +184,22 @@ mod tests {
     #[cfg(feature = "compression")]
     #[test]
     fn test_sign_with_compression() {
-        let ca = CertificateAuthority::new_root("root@example.com", "Root CA");
+        let timestamp = 1704067200;
+        let ca = CertificateAuthority::new_root_with_timestamp(
+            "root@example.com",
+            "Root CA",
+            timestamp,
+        );
         let user_keys = SigningKeyPair::generate();
 
         let user_cert = ca
-            .issue_certificate("alice@example.com", "Alice", &user_keys.public_key(), false)
+            .issue_certificate_with_timestamp(
+                "alice@example.com",
+                "Alice",
+                &user_keys.public_key(),
+                false,
+                timestamp,
+            )
             .unwrap();
 
         let chain = vec![user_cert, ca.certificate.clone()];
@@ -190,7 +207,7 @@ mod tests {
 
         // Large repetitive data compresses well
         let payload = "Hello, World! ".repeat(1000);
-        let header = Header::new("alice@example.com");
+        let header = Header::new_with_timestamp("alice@example.com", timestamp);
 
         let file = signer.sign(payload.as_bytes(), header).unwrap();
 
