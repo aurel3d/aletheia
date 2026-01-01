@@ -94,6 +94,9 @@ pub mod file;
 pub mod signer;
 pub mod verifier;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 pub use error::{AletheiaError, Result};
 pub use types::{
     AletheiaFile, Certificate, Flags, Header, MAGIC_BYTES, VERSION_MAJOR, VERSION_MINOR,
