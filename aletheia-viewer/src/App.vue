@@ -63,6 +63,7 @@ async function handleFileLoad(file: File) {
 // Load trusted root certificates
 async function handleTrustedRootsLoad(files: File[]) {
   try {
+    const { decode } = await import('cbor-x')
     const roots: Uint8Array[] = []
 
     for (const file of files) {
@@ -72,6 +73,7 @@ async function handleTrustedRootsLoad(files: File[]) {
       // Try to parse as raw public key (32 bytes)
       if (bytes.length === 32) {
         roots.push(bytes)
+        console.log(`Loaded raw public key from ${file.name}`)
         continue
       }
 
@@ -83,10 +85,26 @@ async function handleTrustedRootsLoad(files: File[]) {
           hexBytes[i] = parseInt(text.substr(i * 2, 2), 16)
         }
         roots.push(hexBytes)
+        console.log(`Loaded hex-encoded public key from ${file.name}`)
         continue
       }
 
-      console.warn(`Skipping file '${file.name}': not a recognized format`)
+      // Try to parse as CBOR certificate (.cert file)
+      try {
+        const cert = decode(bytes)
+        if (cert && cert.public_key) {
+          const publicKey = new Uint8Array(cert.public_key)
+          if (publicKey.length === 32) {
+            roots.push(publicKey)
+            console.log(`Loaded certificate from ${file.name}:`, cert.subject_name, `(${cert.subject_id})`)
+            continue
+          }
+        }
+      } catch (cborError) {
+        // Not a valid CBOR certificate
+      }
+
+      console.warn(`Skipping file '${file.name}': not a recognized format (expected: 32-byte raw key, 64-char hex, or .cert CBOR file)`)
     }
 
     trustedRoots.value = roots
