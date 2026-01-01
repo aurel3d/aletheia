@@ -118,7 +118,7 @@ describe('Utility Functions', () => {
       ]
 
       for (let i = 0; i < ranges.length - 1; i++) {
-        expect(ranges[i].end).toBe(ranges[i + 1].start)
+        expect(ranges[i]!.end).toBe(ranges[i + 1]!.start)
       }
     })
 
@@ -162,14 +162,14 @@ describe('Utility Functions', () => {
       ]
 
       // Verify first cert's issuer matches second cert's subject
-      expect(mockChain[0].issuer_id).toBe(mockChain[1].subject_id)
+      expect(mockChain[0]!.issuer_id).toBe(mockChain[1]!.subject_id)
 
       // Verify root is self-signed
-      expect(mockChain[mockChain.length - 1].issuer_id)
-        .toBe(mockChain[mockChain.length - 1].subject_id)
+      const rootCert = mockChain[mockChain.length - 1]!
+      expect(rootCert.issuer_id).toBe(rootCert.subject_id)
 
       // Verify root is a CA
-      expect(mockChain[mockChain.length - 1].is_ca).toBe(true)
+      expect(rootCert.is_ca).toBe(true)
     })
 
     it('should validate creator cert is not a CA', () => {
