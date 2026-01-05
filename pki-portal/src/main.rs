@@ -4,6 +4,7 @@ mod error;
 mod models;
 
 use actix_web::{middleware::Logger, App, HttpServer, web};
+use actix_cors::Cors;
 use config::Config;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
@@ -34,6 +35,13 @@ async fn main() -> std::io::Result<()> {
                 db: db_pool.clone(),
             }))
             .wrap(Logger::default())
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .max_age(3600),
+            )
             .configure(api::configure)
     })
     .bind(addr)?
