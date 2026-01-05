@@ -8,6 +8,16 @@ import FileStructureTree from './components/FileStructureTree.vue'
 import DetailsPanel from './components/DetailsPanel.vue'
 import SigningPanel from './components/SigningPanel.vue'
 import DevCAGenerator from './components/DevCAGenerator.vue'
+import PKIPortalView from './components/PKIPortalView.vue'
+
+// Check for mode (URL parameter ?mode=portal or ?mode=viewer)
+const appMode = computed(() => {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('mode') || 'viewer'
+  }
+  return 'viewer'
+})
 
 // Check for dev mode (URL parameter ?dev)
 const isDevMode = computed(() => {
@@ -232,6 +242,9 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
   <!-- Dev Mode: CA Generator -->
   <DevCAGenerator v-if="isDevMode" />
 
+  <!-- PKI Portal Mode -->
+  <PKIPortalView v-else-if="appMode === 'portal'" />
+
   <!-- Normal Mode: Main App -->
   <div v-else class="flex flex-col h-screen bg-gray-50">
     <!-- Header -->
@@ -242,32 +255,43 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
           <p class="text-sm text-gray-600">Cryptographic proof of human-created content authenticity</p>
         </div>
 
-        <!-- Tab Navigation -->
-        <div class="flex border border-gray-200 rounded-lg overflow-hidden">
-          <button
-            type="button"
-            :class="[
-              'px-6 py-2 text-sm font-medium transition-colors',
-              activeTab === 'verify'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            ]"
-            @click="activeTab = 'verify'"
+        <!-- Navigation Links -->
+        <div class="flex items-center gap-4">
+          <!-- Tab Navigation -->
+          <div class="flex border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              :class="[
+                'px-6 py-2 text-sm font-medium transition-colors',
+                activeTab === 'verify'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              ]"
+              @click="activeTab = 'verify'"
+            >
+              Verify Files
+            </button>
+            <button
+              type="button"
+              :class="[
+                'px-6 py-2 text-sm font-medium transition-colors border-l border-gray-200',
+                activeTab === 'sign'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              ]"
+              @click="activeTab = 'sign'"
+            >
+              Sign Files
+            </button>
+          </div>
+
+          <!-- PKI Portal Link -->
+          <a
+            href="?mode=portal"
+            class="px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition"
           >
-            Verify Files
-          </button>
-          <button
-            type="button"
-            :class="[
-              'px-6 py-2 text-sm font-medium transition-colors border-l border-gray-200',
-              activeTab === 'sign'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            ]"
-            @click="activeTab = 'sign'"
-          >
-            Sign Files
-          </button>
+            🔐 PKI Portal
+          </a>
         </div>
       </div>
     </header>
