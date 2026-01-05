@@ -1,0 +1,459 @@
+openapi: 3.0.3
+info:
+  title: Aletheia PKI Portal API
+  version: 0.1.0
+  description: REST API for managing Aletheia trust anchors, issuing certificates, publishing trust bundles, and revocations.
+servers:
+  - url: https://pki.example.com/api/v1
+security:
+  - oauth2: [pki.read]
+tags:
+  - name: roots
+  - name: intermediates
+  - name: certificates
+  - name: revocations
+  - name: trust-bundles
+  - name: policy
+  - name: audit
+paths:
+  /roots:
+    get:
+      tags: [roots]
+      summary: List root certificates
+      security:
+        - oauth2: [pki.read]
+      responses:
+        "200":
+          description: Roots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Root'
+    post:
+      tags: [roots]
+      summary: Create a new root (key held in HSM/KMS)
+      security:
+        - oauth2: [pki.admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRootRequest'
+      responses:
+        "201":
+          description: Root created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Root'
+  /roots/{id}:
+    get:
+      tags: [roots]
+      summary: Get root certificate and metadata
+      parameters:
+        - $ref: '#/components/parameters/RootId'
+      responses:
+        "200":
+          description: Root
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Root'
+        "404": { $ref: '#/components/responses/NotFound' }
+  /roots/{id}/rotate:
+    post:
+      tags: [roots]
+      summary: Rotate root key (staged activation)
+      parameters:
+        - $ref: '#/components/parameters/RootId'
+      security:
+        - oauth2: [pki.admin]
+      responses:
+        "201":
+          description: New staged root
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Root'
+  /intermediates:
+    get:
+      tags: [intermediates]
+      summary: List intermediate CAs
+      responses:
+        "200":
+          description: Intermediates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Intermediate'
+    post:
+      tags: [intermediates]
+      summary: Create intermediate under a parent CA
+      security:
+        - oauth2: [pki.admin, pki.operator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntermediateRequest'
+      responses:
+        "201":
+          description: Intermediate created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Intermediate'
+  /intermediates/{id}:
+    get:
+      tags: [intermediates]
+      summary: Get intermediate CA
+      parameters:
+        - $ref: '#/components/parameters/IntermediateId'
+      responses:
+        "200":
+          description: Intermediate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Intermediate'
+        "404": { $ref: '#/components/responses/NotFound' }
+  /certificates:
+    post:
+      tags: [certificates]
+      summary: Issue end-entity certificate (Aletheia compatible)
+      security:
+        - oauth2: [pki.operator, pki.admin, pki.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateRequest'
+      responses:
+        "201":
+          description: Issued certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/cbor:
+              schema:
+                type: string
+                format: byte
+        "400": { $ref: '#/components/responses/BadRequest' }
+  /certificates/{serial}:
+    get:
+      tags: [certificates]
+      summary: Fetch certificate and status
+      parameters:
+        - $ref: '#/components/parameters/Serial'
+      responses:
+        "200":
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        "404": { $ref: '#/components/responses/NotFound' }
+  /revocations:
+    get:
+      tags: [revocations]
+      summary: Signed revocation list (detached signature)
+      responses:
+        "200":
+          description: Revocation entries
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Version identifier for caching
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RevocationEntry'
+    post:
+      tags: [revocations]
+      summary: Revoke a certificate
+      security:
+        - oauth2: [pki.operator, pki.admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevocationRequest'
+      responses:
+        "201":
+          description: Revocation recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevocationEntry'
+        "400": { $ref: '#/components/responses/BadRequest' }
+  /trust-bundles:
+    post:
+      tags: [trust-bundles]
+      summary: Publish a new trust bundle version (metadata + signed payload)
+      security:
+        - oauth2: [pki.operator, pki.admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishBundleRequest'
+      responses:
+        "201":
+          description: Created bundle metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustBundleMeta'
+        "400": { $ref: '#/components/responses/BadRequest' }
+  /trust-bundles/latest:
+    get:
+      tags: [trust-bundles]
+      summary: Fetch latest signed trust bundle
+      responses:
+        "200":
+          description: Trust bundle metadata
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Version identifier for caching
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustBundleMeta'
+  /trust-bundles/{version}:
+    get:
+      tags: [trust-bundles]
+      summary: Fetch specific trust bundle version
+      parameters:
+        - in: path
+          name: version
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Trust bundle metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustBundleMeta'
+        "404": { $ref: '#/components/responses/NotFound' }
+  /policy:
+    get:
+      tags: [policy]
+      summary: Retrieve issuance constraints and settings
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                  $ref: '#/components/schemas/Policy'
+    put:
+      tags: [policy]
+      summary: Update policy
+      security:
+        - oauth2: [pki.admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+                $ref: '#/components/schemas/PolicyUpdate'
+      responses:
+        "200":
+          description: Updated policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+  /audit/logs:
+    get:
+      tags: [audit]
+      summary: Append-only audit feed
+      security:
+        - oauth2: [pki.auditor, pki.admin]
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEvent'
+                  next_cursor: { type: string, nullable: true }
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+                            updated_at: { type: integer, format: int64 }
+        clientCredentials:
+          tokenUrl: https://pki.example.com/oauth/token
+          scopes:
+            pki.read: Read PKI data
+            pki.write: Issue or modify certificates
+            pki.admin: Manage roots, intermediates, policy
+            pki.operator: Issue and revoke end-entity certs
+            pki.auditor: Read audit logs
+  parameters:
+    RootId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    IntermediateId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    Serial:
+      in: path
+      name: serial
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Root:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        fingerprint: { type: string }
+        cert_pem: { type: string }
+        status: { type: string, enum: [active, staged, retired] }
+        created_at: { type: integer, format: int64 }
+    CreateRootRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    Intermediate:
+      type: object
+      properties:
+        id: { type: string }
+        parent_id: { type: string }
+        name: { type: string }
+        fingerprint: { type: string }
+        cert_pem: { type: string }
+        path_len: { type: integer, nullable: true }
+        status: { type: string, enum: [active, staged, retired] }
+        created_at: { type: integer, format: int64 }
+    CreateIntermediateRequest:
+      type: object
+      required: [parent_id, name]
+      properties:
+        parent_id: { type: string }
+        name: { type: string }
+        path_len: { type: integer, nullable: true }
+        constraints: { type: object, additionalProperties: true }
+    CertificateRequest:
+      type: object
+      required: [subject_id, subject_name, public_key_b64, is_ca]
+      properties:
+        issuer_id: { type: string, format: uuid, nullable: true }
+        subject_id: { type: string }
+        subject_name: { type: string }
+        public_key_b64: { type: string, description: Base64-encoded public key bytes }
+        is_ca: { type: boolean }
+    Certificate:
+      type: object
+      properties:
+        serial: { type: string }
+        issuer_id: { type: string, format: uuid, nullable: true }
+        subject_id: { type: string }
+        subject_name: { type: string }
+        is_ca: { type: boolean }
+        public_key: { type: string, format: byte }
+        status: { type: string, enum: [active, revoked] }
+        created_at: { type: integer, format: int64 }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+    RevocationRequest:
+      type: object
+      required: [serial]
+      properties:
+        serial: { type: string }
+        reason: { type: string, nullable: true }
+        comment: { type: string, nullable: true }
+    RevocationEntry:
+      type: object
+      properties:
+        serial: { type: string }
+        reason: { type: string, nullable: true }
+        revoked_at: { type: integer, format: int64 }
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevocationEntry'
+    TrustBundleMeta:
+      type: object
+      properties:
+        version: { type: string }
+        issued_at: { type: integer, format: int64 }
+        url: { type: string, format: uri }
+        signer_fingerprint: { type: string }
+        status: { type: string, enum: [active, superseded] }
+        payload: { type: object }
+        signature: { type: string }
+    PublishBundleRequest:
+      type: object
+      required: [url, signer_fingerprint]
+      properties:
+        url: { type: string, format: uri }
+        signer_fingerprint: { type: string }
+    Policy:
+      type: object
+      properties:
+        subject_id_pattern: { type: string, nullable: true }
+        allow_ca_issue: { type: boolean, default: false }
+        max_path_len: { type: integer, nullable: true }
+        metadata_requirements: { type: array, items: { type: string }, nullable: true }
+    AuditEvent:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [root.created, root.rotated, intermediate.created, cert.issued, cert.revoked, policy.updated] }
+        actor: { type: string }
+        occurred_at: { type: integer, format: int64 }
+        details: { type: object, additionalProperties: true }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
