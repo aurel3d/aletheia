@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target/
+pki-portal/target/
 **/*.rs.bk
 Cargo.lock
 
