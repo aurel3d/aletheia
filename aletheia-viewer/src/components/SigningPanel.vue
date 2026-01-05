@@ -32,14 +32,15 @@ const outputFilename = computed(() => {
 
 // CA Key Loading
 async function handleCAKeyLoad(files: File[]) {
-  if (files.length === 0) return
+  const file = files[0]
+  if (!file) return
   
   keyError.value = null
   error.value = null
   signedFileBytes.value = null
   
   try {
-    caPrivateKey.value = await parsePrivateKey(files[0])
+    caPrivateKey.value = await parsePrivateKey(file)
     console.log('✅ CA private key loaded')
   } catch (e) {
     keyError.value = e instanceof Error ? e.message : 'Failed to load private key'
@@ -49,15 +50,16 @@ async function handleCAKeyLoad(files: File[]) {
 
 // CA Certificate Loading
 async function handleCACertLoad(files: File[]) {
-  if (files.length === 0) return
+  const file = files[0]
+  if (!file) return
   
   certError.value = null
   error.value = null
   signedFileBytes.value = null
   
   try {
-    const rawBytes = new Uint8Array(await files[0].arrayBuffer())
-    console.log(`Loading certificate: ${files[0].name}, ${rawBytes.length} bytes`)
+    const rawBytes = new Uint8Array(await file.arrayBuffer())
+    console.log(`Loading certificate: ${file.name}, ${rawBytes.length} bytes`)
     
     // Parse certificate bytes (handles base64 encoding)
     const bytes = parseCertificateBytes(rawBytes)
@@ -85,13 +87,13 @@ async function handleCACertLoad(files: File[]) {
 
 // File to Sign Loading
 async function handlePayloadLoad(files: File[]) {
-  if (files.length === 0) return
+  const file = files[0]
+  if (!file) return
   
   error.value = null
   signedFileBytes.value = null
   
   try {
-    const file = files[0]
     payloadFile.value = file
     payloadBytes.value = new Uint8Array(await file.arrayBuffer())
     

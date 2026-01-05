@@ -57,7 +57,7 @@ watch(decompressedPayload, (payload) => {
   if (!contentType.startsWith('image/')) return
 
   console.log('Loading image preview:', contentType, payload.length, 'bytes')
-  const blob = new Blob([payload], { type: contentType })
+  const blob = new Blob([new Uint8Array(payload)], { type: contentType })
   imageDataUrl.value = URL.createObjectURL(blob)
 }, { immediate: true })
 
