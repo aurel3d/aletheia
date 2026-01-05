@@ -6,6 +6,10 @@ import FileUploader from './components/FileUploader.vue'
 import VerificationPanel from './components/VerificationPanel.vue'
 import FileStructureTree from './components/FileStructureTree.vue'
 import DetailsPanel from './components/DetailsPanel.vue'
+import SigningPanel from './components/SigningPanel.vue'
+
+// Tab state
+const activeTab = ref<'verify' | 'sign'>('verify')
 
 // WASM initialization
 const wasmInitialized = ref(false)
@@ -68,7 +72,7 @@ async function handleTrustedRootsLoad(files: File[]) {
 
     for (const file of files) {
       const arrayBuffer = await file.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
+      let bytes = new Uint8Array(arrayBuffer)
 
       // Try to parse as raw public key (32 bytes)
       if (bytes.length === 32) {
@@ -77,7 +81,7 @@ async function handleTrustedRootsLoad(files: File[]) {
         continue
       }
 
-      // Try to parse as hex-encoded
+      // Try to parse as hex-encoded public key (64 hex chars)
       const text = new TextDecoder().decode(bytes).trim()
       if (/^[0-9a-fA-F]{64}$/.test(text)) {
         const hexBytes = new Uint8Array(32)
@@ -87,6 +91,19 @@ async function handleTrustedRootsLoad(files: File[]) {
         roots.push(hexBytes)
         console.log(`Loaded hex-encoded public key from ${file.name}`)
         continue
+      }
+
+      // Try to decode as base64 (certificates are stored as base64-encoded CBOR)
+      try {
+        const binaryString = atob(text)
+        const base64Decoded = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          base64Decoded[i] = binaryString.charCodeAt(i)
+        }
+        bytes = base64Decoded
+        console.log(`Decoded base64 from ${file.name}: ${bytes.length} bytes`)
+      } catch {
+        // Not base64, continue with original bytes
       }
 
       // Try to parse as CBOR certificate (.cert file)
@@ -211,7 +228,41 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
           <p class="text-sm text-gray-600">Cryptographic proof of human-created content authenticity</p>
         </div>
 
-        <div class="flex gap-3">
+        <!-- Tab Navigation -->
+        <div class="flex border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            :class="[
+              'px-6 py-2 text-sm font-medium transition-colors',
+              activeTab === 'verify'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            ]"
+            @click="activeTab = 'verify'"
+          >
+            Verify Files
+          </button>
+          <button
+            type="button"
+            :class="[
+              'px-6 py-2 text-sm font-medium transition-colors border-l border-gray-200',
+              activeTab === 'sign'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            ]"
+            @click="activeTab = 'sign'"
+          >
+            Sign Files
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Verify Tab Content -->
+    <template v-if="activeTab === 'verify'">
+      <!-- Verify Header Controls -->
+      <div class="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+        <div class="flex items-center gap-3">
           <FileUploader
             label="Load Trusted Root(s)"
             accept=".cert,.pub,.key,.pem,.der,*"
@@ -224,44 +275,17 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
             accept=".alx"
             @load="(files) => files[0] && handleFileLoad(files[0])"
           />
+          <div v-if="trustedRoots.length > 0" class="text-sm text-green-700">
+            ✓ {{ trustedRoots.length }} trusted root{{ trustedRoots.length > 1 ? 's' : '' }} loaded
+          </div>
         </div>
       </div>
 
-      <!-- Trusted roots indicator -->
-      <div v-if="trustedRoots.length > 0" class="mt-2 text-sm text-green-700">
-        ✓ {{ trustedRoots.length }} trusted root{{ trustedRoots.length > 1 ? 's' : '' }} loaded
-      </div>
-    </header>
-
-    <!-- Main content -->
-    <div v-if="!hasFile && !parseError" class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <svg
-          class="mx-auto h-24 w-24 text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-          />
-        </svg>
-        <h3 class="mt-4 text-lg font-medium text-gray-900">No file loaded</h3>
-        <p class="mt-2 text-sm text-gray-600">
-          Drop an .alx file here or click "Open .alx File" to begin
-        </p>
-      </div>
-    </div>
-
-    <!-- Parse error -->
-    <div v-if="parseError" class="flex-1 flex items-center justify-center">
-      <div class="max-w-2xl bg-red-50 border border-red-200 rounded-lg p-6">
-        <div class="flex items-start">
+      <!-- Main content -->
+      <div v-if="!hasFile && !parseError" class="flex-1 flex items-center justify-center">
+        <div class="text-center">
           <svg
-            class="h-6 w-6 text-red-600 mt-0.5"
+            class="mx-auto h-24 w-24 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -270,50 +294,82 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
               stroke-linecap="round"
               stroke-linejoin="round"
               stroke-width="2"
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
             />
           </svg>
-          <div class="ml-3">
-            <h3 class="text-lg font-medium text-red-900">Parse Error</h3>
-            <p class="mt-2 text-sm text-red-800 font-mono">{{ parseError }}</p>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">No file loaded</h3>
+          <p class="mt-2 text-sm text-gray-600">
+            Drop an .alx file here or click "Open .alx File" to begin
+          </p>
+        </div>
+      </div>
+
+      <!-- Parse error -->
+      <div v-if="parseError" class="flex-1 flex items-center justify-center">
+        <div class="max-w-2xl bg-red-50 border border-red-200 rounded-lg p-6">
+          <div class="flex items-start">
+            <svg
+              class="h-6 w-6 text-red-600 mt-0.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div class="ml-3">
+              <h3 class="text-lg font-medium text-red-900">Parse Error</h3>
+              <p class="mt-2 text-sm text-red-800 font-mono">{{ parseError }}</p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- File viewer -->
-    <div v-if="hasFile" class="flex-1 flex flex-col overflow-hidden">
-      <!-- Verification Panel -->
-      <VerificationPanel
-        :verification-result="verificationResult"
-        :is-verifying="isVerifying"
-        :has-trusted-roots="trustedRoots.length > 0"
-        @verify="performVerification"
-      />
+      <!-- File viewer -->
+      <div v-if="hasFile" class="flex-1 flex flex-col overflow-hidden">
+        <!-- Verification Panel -->
+        <VerificationPanel
+          :verification-result="verificationResult"
+          :is-verifying="isVerifying"
+          :has-trusted-roots="trustedRoots.length > 0"
+          @verify="performVerification"
+        />
 
-      <!-- Split view -->
-      <div class="flex-1 flex overflow-hidden">
-        <!-- Left: File Structure Tree -->
-        <div class="w-1/3 border-r border-gray-200 overflow-auto bg-white">
-          <FileStructureTree
-            :file="aletheiaFile!"
-            :selected-node="selectedNode"
-            @select="handleNodeSelect"
-          />
-        </div>
+        <!-- Split view -->
+        <div class="flex-1 flex overflow-hidden">
+          <!-- Left: File Structure Tree -->
+          <div class="w-1/3 border-r border-gray-200 overflow-auto bg-white">
+            <FileStructureTree
+              :file="aletheiaFile!"
+              :selected-node="selectedNode"
+              @select="handleNodeSelect"
+            />
+          </div>
 
-        <!-- Right: Details Panel -->
-        <div class="flex-1 overflow-auto bg-white">
-          <DetailsPanel
-            :file="aletheiaFile!"
-            :raw-bytes="rawFileBytes!"
-            :selected-node="selectedNode"
-            :selected-range="selectedRange"
-            :is-verified="isVerified"
-            @hex-click="handleHexClick"
-          />
+          <!-- Right: Details Panel -->
+          <div class="flex-1 overflow-auto bg-white">
+            <DetailsPanel
+              :file="aletheiaFile!"
+              :raw-bytes="rawFileBytes!"
+              :selected-node="selectedNode"
+              :selected-range="selectedRange"
+              :is-verified="isVerified"
+              @hex-click="handleHexClick"
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </template>
+
+    <!-- Sign Tab Content -->
+    <template v-if="activeTab === 'sign'">
+      <div class="flex-1 overflow-auto">
+        <SigningPanel />
+      </div>
+    </template>
   </div>
 </template>

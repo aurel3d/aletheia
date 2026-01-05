@@ -48,24 +48,33 @@ watch(() => props.isVerified, async (isVerified) => {
   }
 }, { immediate: true })
 
-// Load image when ready
-watch([isImage, decompressedPayload], ([isImg, payload]) => {
-  if (!isImg || !payload) return
+// Load image when payload is ready
+watch(decompressedPayload, (payload) => {
+  if (!payload) return
+  
+  // Check if it's an image
+  const contentType = detectContentType(payload, props.contentType)
+  if (!contentType.startsWith('image/')) return
 
-  const blob = new Blob([payload as any], { type: actualContentType.value })
+  console.log('Loading image preview:', contentType, payload.length, 'bytes')
+  const blob = new Blob([payload], { type: contentType })
   imageDataUrl.value = URL.createObjectURL(blob)
-})
+}, { immediate: true })
 
-// Load text when ready
-watch([isText, decompressedPayload], ([isTxt, payload]) => {
-  if (!isTxt || !payload) return
+// Load text when payload is ready
+watch(decompressedPayload, (payload) => {
+  if (!payload) return
+  
+  // Check if it's text
+  const contentType = detectContentType(payload, props.contentType)
+  if (!contentType.startsWith('text/')) return
 
   try {
     textContent.value = decodeText(payload)
   } catch (error) {
     textError.value = error instanceof Error ? error.message : 'Failed to decode text'
   }
-})
+}, { immediate: true })
 
 function downloadPayload() {
   if (!decompressedPayload.value) return

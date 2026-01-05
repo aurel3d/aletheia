@@ -3,7 +3,13 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use crate::{file::from_bytes, verifier::verify};
+use crate::{
+    ca::{CertificateAuthority, SigningKeyPair},
+    file::{from_bytes, to_bytes},
+    signer::Signer,
+    verifier::verify,
+    Certificate, Header,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -199,4 +205,123 @@ pub fn decompress_payload(payload: &[u8], is_compressed: bool) -> Result<Vec<u8>
     {
         Err(JsValue::from_str("Compression support not enabled"))
     }
+}
+
+/// Parse a CBOR-encoded certificate and return its details
+/// Used for validating and displaying CA certificate information
+#[wasm_bindgen]
+pub fn parse_certificate(cbor_bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let cert: Certificate = ciborium::from_reader(cbor_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Certificate parse error: {}", e)))?;
+
+    let wasm_cert = WasmCertificate {
+        version: cert.version,
+        serial: cert.serial,
+        subject_id: cert.subject_id,
+        subject_name: cert.subject_name,
+        public_key: cert.public_key,
+        issuer_id: cert.issuer_id,
+        issued_at: cert.issued_at,
+        is_ca: cert.is_ca,
+        signature: cert.signature,
+    };
+
+    serde_wasm_bindgen::to_value(&wasm_cert)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Sign a file using CA credentials (all-in-one function)
+///
+/// This function:
+/// 1. Generates an ephemeral keypair for this specific file
+/// 2. Issues a certificate for the ephemeral key using the CA
+/// 3. Signs the file with the ephemeral key
+/// 4. Returns the complete .alx file bytes
+///
+/// # Arguments
+/// * `payload` - The file content to sign
+/// * `ca_private_key` - CA private key (32 bytes)
+/// * `ca_cert_cbor` - CA certificate as CBOR bytes
+/// * `creator_id` - Identity string for the signer (e.g., email)
+/// * `content_type` - Optional MIME type
+/// * `original_name` - Optional original filename
+/// * `description` - Optional description
+/// * `compress` - Whether to enable compression
+#[wasm_bindgen]
+pub fn sign_file_with_ca(
+    payload: &[u8],
+    ca_private_key: &[u8],
+    ca_cert_cbor: &[u8],
+    creator_id: &str,
+    content_type: Option<String>,
+    original_name: Option<String>,
+    description: Option<String>,
+    compress: bool,
+) -> Result<Vec<u8>, JsValue> {
+    // Get current timestamp from JavaScript
+    let timestamp_ms = js_sys::Date::now();
+    let timestamp = (timestamp_ms / 1000.0) as i64;
+
+    // Parse CA certificate from CBOR
+    let ca_cert: Certificate = ciborium::from_reader(ca_cert_cbor)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse CA certificate: {}", e)))?;
+
+    // Create CA from key and certificate
+    let ca = CertificateAuthority::from_key_and_cert(ca_private_key, ca_cert.clone())
+        .map_err(|e| JsValue::from_str(&format!("Failed to create CA: {}", e)))?;
+
+    // Generate ephemeral keypair for this file
+    let ephemeral_key = SigningKeyPair::generate();
+
+    // Issue certificate for ephemeral key
+    let ephemeral_cert = ca
+        .issue_certificate_with_timestamp(
+            creator_id,
+            creator_id, // Use creator_id as name too for simplicity
+            &ephemeral_key.public_key(),
+            false, // Not a CA
+            timestamp,
+        )
+        .map_err(|e| JsValue::from_str(&format!("Failed to issue certificate: {}", e)))?;
+
+    // Build certificate chain: [ephemeral_cert, ca_cert]
+    let cert_chain = vec![ephemeral_cert, ca_cert];
+
+    // Create signer
+    let signer = Signer::new(ephemeral_key, cert_chain)
+        .map_err(|e| JsValue::from_str(&format!("Failed to create signer: {}", e)))?;
+
+    // Optionally enable compression
+    #[cfg(feature = "compression")]
+    let signer = if compress {
+        signer.with_compression()
+    } else {
+        signer
+    };
+
+    #[cfg(not(feature = "compression"))]
+    let _ = compress; // Suppress unused warning
+
+    // Build header
+    let mut header = Header::new_with_timestamp(creator_id, timestamp);
+    if let Some(ct) = content_type {
+        header = header.with_content_type(ct);
+    }
+    if let Some(name) = original_name {
+        header = header.with_original_name(name);
+    }
+    if let Some(desc) = description {
+        header = header.with_description(desc);
+    }
+
+    // Sign the file
+    let file = signer
+        .sign(payload, header)
+        .map_err(|e| JsValue::from_str(&format!("Failed to sign file: {}", e)))?;
+
+    // Serialize to bytes
+    let bytes = to_bytes(&file)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize file: {}", e)))?;
+
+    Ok(bytes)
 }
