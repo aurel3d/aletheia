@@ -207,6 +207,97 @@ pub fn decompress_payload(payload: &[u8], is_compressed: bool) -> Result<Vec<u8>
     }
 }
 
+/// Result structure for CA generation
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WasmGeneratedCA {
+    /// Private key as hex string (64 chars)
+    pub private_key_hex: String,
+    /// Certificate as base64-encoded CBOR
+    pub certificate_base64: String,
+    /// Certificate info
+    pub subject_id: String,
+    pub subject_name: String,
+}
+
+/// Generate a new root Certificate Authority
+/// WARNING: For development use only! In production, CAs should be generated offline.
+///
+/// # Arguments
+/// * `subject_id` - Identity string for the CA (e.g., email)
+/// * `subject_name` - Human-readable name for the CA
+///
+/// # Returns
+/// Object containing:
+/// - privateKeyHex: 64-character hex string (32 bytes)
+/// - certificateBase64: Base64-encoded CBOR certificate
+/// - subjectId, subjectName: CA identity info
+#[wasm_bindgen]
+pub fn generate_root_ca(subject_id: &str, subject_name: &str) -> Result<JsValue, JsValue> {
+    // Get current timestamp from JavaScript
+    let timestamp_ms = js_sys::Date::now();
+    let timestamp = (timestamp_ms / 1000.0) as i64;
+
+    // Generate new root CA
+    let ca = CertificateAuthority::new_root_with_timestamp(subject_id, subject_name, timestamp);
+
+    // Get private key as hex
+    let private_key_bytes = ca.private_key_bytes();
+    let private_key_hex: String = private_key_bytes
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect();
+
+    // Serialize certificate to CBOR then base64
+    let mut cert_cbor = Vec::new();
+    ciborium::into_writer(&ca.certificate, &mut cert_cbor)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize certificate: {}", e)))?;
+
+    // Base64 encode using js_sys
+    let cert_base64 = base64_encode(&cert_cbor);
+
+    let result = WasmGeneratedCA {
+        private_key_hex,
+        certificate_base64: cert_base64,
+        subject_id: ca.certificate.subject_id.clone(),
+        subject_name: ca.certificate.subject_name.clone(),
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Simple base64 encoding (no external dependency needed)
+fn base64_encode(data: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    let mut result = String::new();
+    let chunks = data.chunks(3);
+
+    for chunk in chunks {
+        let b0 = chunk[0] as usize;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as usize;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as usize;
+
+        result.push(ALPHABET[b0 >> 2] as char);
+        result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
+
+        if chunk.len() > 1 {
+            result.push(ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)] as char);
+        } else {
+            result.push('=');
+        }
+
+        if chunk.len() > 2 {
+            result.push(ALPHABET[b2 & 0x3f] as char);
+        } else {
+            result.push('=');
+        }
+    }
+
+    result
+}
+
 /// Parse a CBOR-encoded certificate and return its details
 /// Used for validating and displaying CA certificate information
 #[wasm_bindgen]

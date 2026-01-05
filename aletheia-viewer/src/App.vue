@@ -7,6 +7,16 @@ import VerificationPanel from './components/VerificationPanel.vue'
 import FileStructureTree from './components/FileStructureTree.vue'
 import DetailsPanel from './components/DetailsPanel.vue'
 import SigningPanel from './components/SigningPanel.vue'
+import DevCAGenerator from './components/DevCAGenerator.vue'
+
+// Check for dev mode (URL parameter ?dev)
+const isDevMode = computed(() => {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    return params.has('dev')
+  }
+  return false
+})
 
 // Tab state
 const activeTab = ref<'verify' | 'sign'>('verify')
@@ -219,7 +229,11 @@ const isVerified = computed(() => verificationResult.value?.isValid === true)
 </script>
 
 <template>
-  <div class="flex flex-col h-screen bg-gray-50">
+  <!-- Dev Mode: CA Generator -->
+  <DevCAGenerator v-if="isDevMode" />
+
+  <!-- Normal Mode: Main App -->
+  <div v-else class="flex flex-col h-screen bg-gray-50">
     <!-- Header -->
     <header class="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
       <div class="flex items-center justify-between">
