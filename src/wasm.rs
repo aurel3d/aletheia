@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::{
+    Certificate, Header,
     ca::{CertificateAuthority, SigningKeyPair},
     file::{from_bytes, to_bytes},
     signer::Signer,
     verifier::verify,
-    Certificate, Header,
 };
 
 #[wasm_bindgen]
